@@ -1,36 +1,40 @@
 # Provisioning Compute Resources
 
-Kubernetes requires a set of machines to host the Kubernetes control plane and the worker nodes where containers are ultimately run. In this lab you will provision the compute resources required for running a secure and highly available Kubernetes cluster across a single [compute zone](https://cloud.google.com/compute/docs/regions-zones/regions-zones).
+Kubernetes requires a set of machines to host the Kubernetes control plane and the worker nodes where containers are ultimately run. In this lab you will provision the compute resources required for running a secure and highly available Kubernetes cluster across multiple [Availability Zones](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html#concepts-regions-availability-zones) (AZ).
 
-> Ensure a default compute zone and region have been set as described in the [Prerequisites](01-prerequisites.md#set-a-default-compute-region-and-zone) lab.
+> Ensure a default region has been set as described in the [Prerequisites](01-prerequisites.md#set-a-default-compute-region) lab.
 
 ## Networking
 
 The Kubernetes [networking model](https://kubernetes.io/docs/concepts/cluster-administration/networking/#kubernetes-model) assumes a flat network in which containers and nodes can communicate with each other. In cases where this is not desired [network policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/) can limit how groups of containers are allowed to communicate with each other and external network endpoints.
 
+We are going to use [VPC CNI plugin](https://github.com/aws/amazon-vpc-cni-k8s) created by [AWS EKS](https://aws.amazon.com/eks/) team so Kubernetes pods will be using VPC network ip addresses without any overlay network.
+
 > Setting up network policies is out of scope for this tutorial.
 
 ### Virtual Private Cloud Network
 
-In this section a dedicated [Virtual Private Cloud](https://cloud.google.com/compute/docs/networks-and-firewalls#networks) (VPC) network will be setup to host the Kubernetes cluster.
-
-Create the `kubernetes-the-hard-way` custom VPC network:
+In this section a dedicated [Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC) network will be setup to host the Kubernetes cluster. To simplify this you can use Cloudformation template [network.yaml](../templates/network.yaml):
 
 ```
-gcloud compute networks create kubernetes-the-hard-way --subnet-mode custom
+aws cloudformation create-stack --stack-name hardway --template-body file://./templates/network.yaml
 ```
 
-A [subnet](https://cloud.google.com/compute/docs/vpc/#vpc_networks_and_subnets) must be provisioned with an IP address range large enough to assign a private IP address to each node in the Kubernetes cluster.
+This template will provision a VPC with 10.100.0.0/16 CIDR divided into three small subnets in three AZ for masters nodes with ip ranges:
+- 10.100.0.0/23
+- 10.100.2.0/23
+- 10.100.4.0/23
 
-Create the `kubernetes` subnet in the `kubernetes-the-hard-way` VPC network:
+and three bigger subnets in three AZs for worker nodes and pods:
+- 10.100.16.0/20
+- 10.100.32.0/20
+- 10.100.48.0/20
 
-```
-gcloud compute networks subnets create kubernetes \
-  --network kubernetes-the-hard-way \
-  --range 10.240.0.0/24
-```
+Worker subnets must be provisioned with an IP address range large enough to assign a private IP address to each node and pods on this node in the Kubernetes cluster, since pods use IP addresses from the same subnet where their node is ([more info about CNI over VPC plugin for AWS](https://github.com/aws/amazon-vpc-cni-k8s/blob/master/proposals/cni-proposal.md)).
 
-> The `10.240.0.0/24` IP address range can host up to 254 compute instances.
+CloudFormation template also creates other related resources, such as Internet Gateway and route table. You can override the VPC CIDR and subnets' size providing parameters differ from defaults.
+
+If you want to create VPC and subnets manually with AWS CLI you can follow [official AWS guide](https://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/vpc-subnets-commands-example.html) just remember to spread your subnets for master and worker nodes per AZ and choose appropriate subnet sizes with the above considerations.
 
 ### Firewall Rules
 

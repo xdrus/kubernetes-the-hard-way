@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Basic VPC
+
+Parameters:
+  ControlSubnetsSizeMask:
+    Default: 9
+    Description: Control Subnets size mask (that is 32 - normal subnet mask)
+    Type: Number
+
+  WorkersSubnetsSizeMask:
+      Default: 12
+      Description: Control Subnets  size mask (that is 32 - normal subnet mask)
+      Type: Number
+
+  VPCCIDR:
+    Default: 10.100.0.0/16
+    Description: VPC CIDR
+    Type: String
+
+Outputs:
+  ControlSubnets:
+    Description: Subnet IDs of the control zone
+    Value:
+      Fn::Sub: ${ControlSubnetA},${ControlSubnetB},${ControlSubnetC}
+  WorkerSubnets:
+    Description: Subnet IDs of the worker zone
+    Value:
+      Fn::Sub: ${WorkerSubnetA},${WorkerSubnetB},${WorkerSubnetC}
+  VPCId:
+    Description: VPCId of the newly created VPC
+    Value:
+      Ref: VPC
+
+Resources:
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCIDR
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Name
+        Value: !Sub 'k8s-vpc-${AWS::StackName}'
+
+  InternetGateway:
+      Type: AWS::EC2::InternetGateway
+      Properties:
+        Tags:
+          - Key: Application
+            Value: !Ref AWS::StackName
+          - Key: Name
+            Value: !Sub 'k8s-igw-${AWS::StackName}'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: InternetGateway
+      VpcId:
+        Ref: VPC
+
+  ControlSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock:  !Select
+        - 0
+        - Fn::Cidr:
+          - !Select [0, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask] ]
+          - 3
+          - !Ref ControlSubnetsSizeMask
+      MapPublicIpOnLaunch: True
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Network
+        Value: Control
+      - Key: Name
+        Value: !Sub 'k8s-control-subnet-a-${AWS::StackName}'
+      VpcId: !Ref VPC
+
+  ControlSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock:  !Select
+        - 1
+        - Fn::Cidr:
+          - !Select [0, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
+          - 3
+          - !Ref ControlSubnetsSizeMask
+      MapPublicIpOnLaunch: True
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Network
+        Value: Control
+      - Key: Name
+        Value: !Sub 'k8s-control-subnet-b-${AWS::StackName}'
+      VpcId: !Ref VPC
+
+  ControlSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [2, !GetAZs '']
+      CidrBlock:  !Select
+        - 2
+        - Fn::Cidr:
+          - !Select [0, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
+          - 3
+          - !Ref ControlSubnetsSizeMask
+      MapPublicIpOnLaunch: True
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Network
+        Value: Control
+      - Key: Name
+        Value: !Sub 'k8s-control-subnet-c-${AWS::StackName}'
+      VpcId: !Ref VPC
+
+  WorkerSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock:  !Select [1, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
+      MapPublicIpOnLaunch: True
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Network
+        Value: Worker
+      - Key: Name
+        Value: !Sub 'k8s-worker-subnet-a-${AWS::StackName}'
+      VpcId: !Ref VPC
+
+  WorkerSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock:  !Select [2, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
+      MapPublicIpOnLaunch: True
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Network
+        Value: Worker
+      - Key: Name
+        Value: !Sub 'k8s-worker-subnet-b-${AWS::StackName}'
+      VpcId: !Ref VPC
+
+  WorkerSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [2, !GetAZs '']
+      CidrBlock:  !Select [3, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
+      MapPublicIpOnLaunch: True
+      Tags:
+      - Key: Application
+        Value: !Ref AWS::StackName
+      - Key: Network
+        Value: Worker
+      - Key: Name
+        Value: !Sub 'k8s-worker-subnet-c-${AWS::StackName}'
+      VpcId: !Ref VPC
+
+  PublicRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+          VpcId: !Ref VPC
+          Tags:
+              - Key: Name
+                Value: !Sub 'k8s-public-route-table-${AWS::StackName}'
+
+  DefaultPublicRoute:
+      Type: AWS::EC2::Route
+      DependsOn: InternetGatewayAttachment
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          DestinationCidrBlock: 0.0.0.0/0
+          GatewayId: !Ref InternetGateway
+
+  ControlSubnetARouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref ControlSubnetA
+
+  ControlSubnetBRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref ControlSubnetB
+
+  ControlSubnetCRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref ControlSubnetC
+
+  WorkerSubnetARouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref WorkerSubnetA
+
+  WorkerSubnetBRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref WorkerSubnetB
+
+  WorkerSubnetCRouteTableAssociation:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+          RouteTableId: !Ref PublicRouteTable
+          SubnetId: !Ref WorkerSubnetC
