@@ -1,0 +1,136 @@
+Description: >
+    Security groups for:
+      - kubernets API Load Balancer
+      - master nodes
+      - worker nodes
+
+Parameters:
+
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+
+    VPC:
+        Type: AWS::EC2::VPC::Id
+        Description: Choose which VPC the security groups should be deployed to
+
+Resources:
+
+    # This security group defines who/where is allowed to access the Application Load Balancer.
+    # By default, we've opened this up to the public internet (0.0.0.0/0) but can you restrict
+    # it further if you want.
+    LoadBalancerSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId: !Ref VPC
+            GroupDescription: Access to the load balancer that sits in front of k8s masters
+            SecurityGroupIngress:
+                - IpProtocol: "tcp"
+                  FromPort: 433
+                  ToPort: 433
+                  CidrIp: 0.0.0.0/0
+                  Description: Allow access to HTTPS from everywhere
+            Tags:
+                - Key: Environment
+                  Value: !Ref EnvironmentName
+                - Key: Network
+                  Value: Control
+                - Key: Name
+                  Value: !Sub '${EnvironmentName}-control-alb-sg'
+
+    WorkerNodesSecurityGroup:
+            Type: AWS::EC2::SecurityGroup
+            Properties:
+                VpcId: !Ref VPC
+                GroupDescription: Access to the worker nodes
+                SecurityGroupIngress:
+                  - IpProtocol: -1
+                    SourceSecurityGroupId: !Ref ControlNodesSecurityGroup
+                    Description: Allow all traffic from master nodes
+                  - IpProtocol: "tcp"
+                    FromPort: 22
+                    ToPort: 22
+                    CidrIp: 0.0.0.0/0
+                    Description: Allow world wide ssh access
+                  - IpProtocol: "icmp"
+                    FromPort: 3
+                    ToPort: 4
+                    CidrIp: 0.0.0.0/0
+                    Description: Allow path MTU discovery
+                Tags:
+                  - Key: Environment
+                    Value: !Ref EnvironmentName
+                  - Key: Network
+                    Value: Worker
+                  - Key: Name
+                    Value: !Sub '${EnvironmentName}-worker-nodes-sg'
+
+    ControlNodesSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId: !Ref VPC
+            GroupDescription: Access to the master nodes
+            SecurityGroupIngress:
+              - IpProtocol: "tcp"
+                FromPort: 6433
+                ToPort: 6433
+                SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+                Description: Allow access from LoadBalancer
+              - IpProtocol: "tcp"
+                FromPort: 22
+                ToPort: 22
+                CidrIp: 0.0.0.0/0
+                Description: Allow world wide ssh access
+              - IpProtocol: "icmp"
+                FromPort: 3
+                ToPort: 4
+                CidrIp: 0.0.0.0/0
+                Description: Allow path MTU discovery
+            Tags:
+                - Key: Environment
+                  Value: !Ref AWS::StackName
+                - Key: Network
+                  Value: Control
+                - Key: Name
+                  Value: !Sub '${EnvironmentName}-control-nodes-sg'
+
+    ControlNodesSecurityGroupIngressSelfAccess:
+      Type: "AWS::EC2::SecurityGroupIngress"
+      Properties:
+        Description: Allow everything within the control zone
+        GroupId: !Ref ControlNodesSecurityGroup
+        IpProtocol: -1
+        SourceSecurityGroupId: !Ref ControlNodesSecurityGroup
+
+    ControlNodesSecurityGroupIngressWorkerNodesAccess:
+      Type: "AWS::EC2::SecurityGroupIngress"
+      Properties:
+        Description: Allow access to API from worker nodes
+        GroupId: !Ref ControlNodesSecurityGroup
+        IpProtocol: "tcp"
+        FromPort: 6433
+        ToPort: 6433
+        SourceSecurityGroupId: !Ref WorkerNodesSecurityGroup
+
+    WorkerNodesSecurityGroupIngressSelfAccess:
+      Type: "AWS::EC2::SecurityGroupIngress"
+      Properties:
+        Description: Allow everything from other worker nodes
+        GroupId: !Ref WorkerNodesSecurityGroup
+        IpProtocol: -1
+        SourceSecurityGroupId: !Ref WorkerNodesSecurityGroup
+
+
+Outputs:
+
+    WorkerNodesSecurityGroup:
+        Description: Worker nodes security group id
+        Value: !Ref WorkerNodesSecurityGroup
+
+    ControlNodesSecurityGroup:
+        Description: Master nodes security group id
+        Value: !Ref ControlNodesSecurityGroup
+
+    LoadBalancerSecurityGroup:
+        Description: A reference to the security group for kube API load balancer
+        Value: !Ref LoadBalancerSecurityGroup

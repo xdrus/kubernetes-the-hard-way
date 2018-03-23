@@ -17,7 +17,10 @@ We are going to use [VPC CNI plugin](https://github.com/aws/amazon-vpc-cni-k8s) 
 In this section a dedicated [Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC) network will be setup to host the Kubernetes cluster. To simplify this you can use Cloudformation template [network.yaml](../templates/network.yaml):
 
 ```
-aws cloudformation create-stack --stack-name hardway --template-body file://./templates/network.yaml
+export ENV=hardway-k8s
+export CFN_NET=$ENV-net
+
+aws cloudformation create-stack --stack-name $CFN_NET --template-body file://./templates/network.yaml --parameters ParameterKey=EnvironmentName,ParameterValue=$ENV
 ```
 
 This template will provision a VPC with 10.100.0.0/16 CIDR divided into three small subnets in three AZ for masters nodes with ip ranges:
@@ -36,63 +39,47 @@ CloudFormation template also creates other related resources, such as Internet G
 
 If you want to create VPC and subnets manually with AWS CLI you can follow [official AWS guide](https://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/vpc-subnets-commands-example.html) just remember to spread your subnets for master and worker nodes per AZ and choose appropriate subnet sizes with the above considerations.
 
-### Firewall Rules
-
-Create a firewall rule that allows internal communication across all protocols:
+Once stack is created we can grab output values for VPC and subnet IDs we need later.
 
 ```
-gcloud compute firewall-rules create kubernetes-the-hard-way-allow-internal \
-  --allow tcp,udp,icmp \
-  --network kubernetes-the-hard-way \
-  --source-ranges 10.240.0.0/24,10.200.0.0/16
+export VPC=$(aws cloudformation describe-stacks --stack-name $CFN_NET --query 'Stacks[0].Outputs[?OutputKey==`VPCId`].OutputValue' --output text)
+
+export WORKER_SUBNETS=$(aws cloudformation describe-stacks --stack-name $CFN_NET --query 'Stacks[0].Outputs[?OutputKey==`WorkerSubnets`].OutputValue' --output text)
+
+export CONTROL_SUBNETS=$(aws cloudformation describe-stacks --stack-name $CFN_NET --query 'Stacks[0].Outputs[?OutputKey==`ControlSubnets`].OutputValue' --output text)
 ```
 
-Create a firewall rule that allows external SSH, ICMP, and HTTPS:
+### Security groups
+
+In this section we will create a set of security groups to allow communications between masters and nodes and incoming connections to masters API. Again we will use a CloudFormation template [sg.yaml](../templates/sg.yaml) for this as creating the underlying infrastructure is not the main goal of this guide.
 
 ```
-gcloud compute firewall-rules create kubernetes-the-hard-way-allow-external \
-  --allow tcp:22,tcp:6443,icmp \
-  --network kubernetes-the-hard-way \
-  --source-ranges 0.0.0.0/0
+export CFN_SG=$ENV-sg
+
+aws cloudformation create-stack --stack-name $CFN_SG --template-body file://templates/sg.yaml --parameters ParameterKey=EnvironmentName,ParameterValue=$ENV ParameterKey=VPC,ParameterValue=$VPC
 ```
 
-> An [external load balancer](https://cloud.google.com/compute/docs/load-balancing/network/) will be used to expose the Kubernetes API Servers to remote clients.
+This template will create three security groups:
+- For worker nodes with all traffic allowed from masters and other workers
+- For master nodes with all traffic allowed from other masters, and API port access from Load balancer and workers
+- For a load balancer
 
-List the firewall rules in the `kubernetes-the-hard-way` VPC network:
+> An [Application load balancer](https://aws.amazon.com/elasticloadbalancing/) will be used to expose the Kubernetes API Servers to remote clients.
 
-```
-gcloud compute firewall-rules list --filter="network:kubernetes-the-hard-way"
-```
-
-> output
-
-```
-NAME                                    NETWORK                  DIRECTION  PRIORITY  ALLOW                 DENY
-kubernetes-the-hard-way-allow-external  kubernetes-the-hard-way  INGRESS    1000      tcp:22,tcp:6443,icmp
-kubernetes-the-hard-way-allow-internal  kubernetes-the-hard-way  INGRESS    1000      tcp,udp,icmp
-```
-
-### Kubernetes Public IP Address
-
-Allocate a static IP address that will be attached to the external load balancer fronting the Kubernetes API Servers:
+Get security groups and list rules:
 
 ```
-gcloud compute addresses create kubernetes-the-hard-way \
-  --region $(gcloud config get-value compute/region)
+export LB_SG=$(aws cloudformation describe-stacks --stack-name $CFN_SG --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerSecurityGroup`].OutputValue' --output text)
+
+export CONTROL_SG=$(aws cloudformation describe-stacks --stack-name $CFN_SG --query 'Stacks[0].Outputs[?OutputKey==`ControlNodesSecurityGroup`].OutputValue' --output text)
+
+export WORKER_SG=$(aws cloudformation describe-stacks --stack-name $CFN_SG --query 'Stacks[0].Outputs[?OutputKey==`WorkerNodesSecurityGroup`].OutputValue' --output text)
+
+aws ec2 describe-security-groups --group-ids $LB_SG $WORKER_SG $CONTROL_SG
 ```
 
-Verify the `kubernetes-the-hard-way` static IP address was created in your default compute region:
+### Kubernetes Public Access
 
-```
-gcloud compute addresses list --filter="name=('kubernetes-the-hard-way')"
-```
-
-> output
-
-```
-NAME                     REGION    ADDRESS        STATUS
-kubernetes-the-hard-way  us-west1  XX.XXX.XXX.XX  RESERVED
-```
 
 ## Compute Instances
 

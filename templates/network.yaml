@@ -1,7 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Basic VPC
+Description: VPC with control and worker subnets for k8s cluster.
 
 Parameters:
+
+  EnvironmentName:
+      Description: An environment name that will be prefixed to resource names
+      Type: String
+
   ControlSubnetsSizeMask:
     Default: 9
     Description: Control Subnets size mask (that is 32 - normal subnet mask)
@@ -40,19 +45,19 @@ Resources:
       EnableDnsHostnames: 'true'
       EnableDnsSupport: 'true'
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Name
-        Value: !Sub 'k8s-vpc-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-vpc'
 
   InternetGateway:
       Type: AWS::EC2::InternetGateway
       Properties:
         Tags:
-          - Key: Application
-            Value: !Ref AWS::StackName
+          - Key: Environment
+            Value: !Ref EnvironmentName
           - Key: Name
-            Value: !Sub 'k8s-igw-${AWS::StackName}'
+            Value: !Sub '${EnvironmentName}-igw'
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -74,12 +79,12 @@ Resources:
           - !Ref ControlSubnetsSizeMask
       MapPublicIpOnLaunch: True
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Network
         Value: Control
       - Key: Name
-        Value: !Sub 'k8s-control-subnet-a-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-control-subnet-A'
       VpcId: !Ref VPC
 
   ControlSubnetB:
@@ -94,12 +99,12 @@ Resources:
           - !Ref ControlSubnetsSizeMask
       MapPublicIpOnLaunch: True
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Network
         Value: Control
       - Key: Name
-        Value: !Sub 'k8s-control-subnet-b-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-control-subnet-B'
       VpcId: !Ref VPC
 
   ControlSubnetC:
@@ -114,12 +119,12 @@ Resources:
           - !Ref ControlSubnetsSizeMask
       MapPublicIpOnLaunch: True
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Network
         Value: Control
       - Key: Name
-        Value: !Sub 'k8s-control-subnet-c-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-control-subnet-C'
       VpcId: !Ref VPC
 
   WorkerSubnetA:
@@ -129,12 +134,12 @@ Resources:
       CidrBlock:  !Select [1, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
       MapPublicIpOnLaunch: True
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Network
         Value: Worker
       - Key: Name
-        Value: !Sub 'k8s-worker-subnet-a-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-worker-subnet-A'
       VpcId: !Ref VPC
 
   WorkerSubnetB:
@@ -144,12 +149,12 @@ Resources:
       CidrBlock:  !Select [2, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
       MapPublicIpOnLaunch: True
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Network
         Value: Worker
       - Key: Name
-        Value: !Sub 'k8s-worker-subnet-b-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-worker-subnet-B'
       VpcId: !Ref VPC
 
   WorkerSubnetC:
@@ -159,12 +164,12 @@ Resources:
       CidrBlock:  !Select [3, !Cidr [!Ref VPCCIDR, 4, !Ref WorkersSubnetsSizeMask]]
       MapPublicIpOnLaunch: True
       Tags:
-      - Key: Application
-        Value: !Ref AWS::StackName
+      - Key: Environment
+        Value: !Ref EnvironmentName
       - Key: Network
         Value: Worker
       - Key: Name
-        Value: !Sub 'k8s-worker-subnet-c-${AWS::StackName}'
+        Value: !Sub '${EnvironmentName}-worker-subnet-B'
       VpcId: !Ref VPC
 
   PublicRouteTable:
@@ -172,8 +177,10 @@ Resources:
       Properties:
           VpcId: !Ref VPC
           Tags:
+              - Key: Environment
+                Value: !Ref EnvironmentName
               - Key: Name
-                Value: !Sub 'k8s-public-route-table-${AWS::StackName}'
+                Value: !Sub '${EnvironmentName}-public-route-table'
 
   DefaultPublicRoute:
       Type: AWS::EC2::Route
