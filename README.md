@@ -1,14 +1,18 @@
 # Kubernetes The Hard Way
 
-This tutorial walks you through setting up Kubernetes the hard way. This guide is not for people looking for a fully automated command to bring up a Kubernetes cluster. If that's you then check out [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine), or the [Getting Started Guides](http://kubernetes.io/docs/getting-started-guides/).
+This tutorial walks you through setting up Kubernetes the hard way. This guide is not for people looking for a fully automated command to bring up a Kubernetes cluster. If that's you then check out [AWS EKS](https://aws.amazon.com/eks/), or the [Getting Started Guides](http://kubernetes.io/docs/getting-started-guides/).
 
 Kubernetes The Hard Way is optimized for learning, which means taking the long route to ensure you understand each task required to bootstrap a Kubernetes cluster.
 
 > The results of this tutorial should not be viewed as production ready, and may receive limited support from the community, but don't let that stop you from learning!
 
+*Note*: This is a fork of a [popular tutorial](https://github.com/kelseyhightower/kubernetes-the-hard-way) adopted to AWS instead of Google Cloud Platform.
+
+*Note 2*: Currently this tutorial is not finished yet, please subscribe to get notified once it's ready.
+
 ## Target Audience
 
-The target audience for this tutorial is someone planning to support a production Kubernetes cluster and wants to understand how everything fits together.
+The target audience for this tutorial is someone planning to support a production Kubernetes cluster on AWS and wants to understand how everything fits together.
 
 ## Cluster Details
 
@@ -17,11 +21,12 @@ Kubernetes The Hard Way guides you through bootstrapping a highly available Kube
 * [Kubernetes](https://github.com/kubernetes/kubernetes) 1.9.0
 * [cri-containerd Container Runtime](https://github.com/kubernetes-incubator/cri-containerd) 1.0.0-beta.0
 * [CNI Container Networking](https://github.com/containernetworking/cni) 0.6.0
+* [Networking plugin for pod networking using ENI on AWS](https://github.com/aws/amazon-vpc-cni-k8s) alpha
 * [etcd](https://github.com/coreos/etcd) 3.2.11
 
 ## Labs
 
-This tutorial assumes you have access to the [Google Cloud Platform](https://cloud.google.com). While GCP is used for basic infrastructure requirements the lessons learned in this tutorial can be applied to other platforms.
+This tutorial assumes you have access to the [Amazon Web Services platform](https://aws.amazon.com/). While AWS is used for basic infrastructure requirements and some things here are very AWS specific (e.g. VPC-CNI plugin) the lessons learned in this tutorial can be applied to other platforms.
 
 * [Prerequisites](docs/01-prerequisites.md)
 * [Installing the Client Tools](docs/02-client-tools.md)
