@@ -79,7 +79,29 @@ aws ec2 describe-security-groups --group-ids $LB_SG $WORKER_SG $CONTROL_SG
 ```
 
 ### Kubernetes Public Access
+__TODO__: confirm the statement below
 
+In this lab AWS [Elastic Load Balancer](https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/introduction.html) is used to provide access to Kubernetes API for external clients. It is configured in TCP mode to allow SSL passthrough and terminate SSL on master nodes. It allows to use [client certificate authentication](https://kubernetes.io/docs/admin/authentication/#x509-client-certs) alongside with [webhook authentication](https://kubernetes.io/docs/admin/authentication/#webhook-token-authentication) based on IAM provided by [heptio authenticator](https://github.com/heptio/authenticator).
+
+To simplify this step we will use CloudFormation template [elb.yaml](../templates/elb.yaml) to provision an Elastic Load Balancer.
+
+```
+export CFN_ELB=$ENV-elb
+
+aws cloudformation create-stack --stack-name $CFN_ELB --template-body file://templates/elb.yaml --parameters \
+    ParameterKey=EnvironmentName,ParameterValue=$ENV \
+    ParameterKey=Subnets,ParameterValue=\"$CONTROL_SUBNETS\" \
+    ParameterKey=LoadBalancerSecurityGroup,ParameterValue=$LB_SG
+```
+
+
+Now we can get URL of the Load Balancer and Load Balancer name for further usage.
+
+```
+export LB_NAME=$(aws cloudformation describe-stacks --stack-name $CFN_ELB --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancer`].OutputValue' --output text)
+
+export LB_URL=$(aws cloudformation describe-stacks --stack-name $CFN_ELB --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerUrl`].OutputValue' --output text)
+```
 
 ## Compute Instances
 

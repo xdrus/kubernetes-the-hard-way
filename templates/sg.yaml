@@ -36,7 +36,7 @@ Resources:
                 - Key: Network
                   Value: Control
                 - Key: Name
-                  Value: !Sub '${EnvironmentName}-control-alb-sg'
+                  Value: !Sub '${EnvironmentName}-control-elb-sg'
 
     WorkerNodesSecurityGroup:
             Type: AWS::EC2::SecurityGroup

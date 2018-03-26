@@ -1,0 +1,57 @@
+Description: Create an ELB that exposes k8s API.
+
+Parameters:
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+        
+    Subnets:
+        Description: ControlSubnets (or Utility subnets if Control subnets are private)
+        Type: List<AWS::EC2::Subnet::Id>
+
+    LoadBalancerSecurityGroup:
+        Description: Select the Security Group to apply to the ELB
+        Type: AWS::EC2::SecurityGroup::Id
+
+Resources:
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      Subnets: !Ref Subnets
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Scheme: internet-facing
+      Listeners:
+      - LoadBalancerPort: 443
+        InstancePort:     6443
+        Protocol: TCP
+      Tags:
+          - Key: Environment
+            Value: !Ref EnvironmentName
+          - Key: Network
+            Value: Control
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-elb-sg'
+      # HealthCheck:
+      #   Target:
+      #     Fn::Join:
+      #     - ''
+      #     - - 'HTTP:'
+      #       - Ref: WebServerPort
+      #       - "/"
+      #   HealthyThreshold: '3'
+      #   UnhealthyThreshold: '5'
+      #   Interval: '30'
+      #   Timeout: '5'
+
+
+Outputs:
+
+    LoadBalancer:
+        Description: A reference to the ELB
+        Value: !Ref LoadBalancer
+
+    LoadBalancerUrl:
+        Description: The URL of the ALB
+        Value: !GetAtt LoadBalancer.DNSName
