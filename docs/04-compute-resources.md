@@ -2,14 +2,69 @@
 
 Kubernetes requires a set of machines to host the Kubernetes control plane and the worker nodes where containers are ultimately run. In this lab you will provision the compute resources required for running a secure and highly available Kubernetes cluster across multiple [Availability Zones](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html#concepts-regions-availability-zones) (AZ).
 
+## Supplemental resources
+
+We will use a set of supplement resources in order to simplify cluster management, such as SSM Parameter store and EC2 instance profiles with IAM roles.
+
+### SSM Parameter Store or S3
+__TODO__
 
 ### IAM roles
 
-In this section we will create [Instance profiles](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) with appropriate IAM Roles for worker nodes and master nodes in order to make them work with CNI plugin as well as to use with heptio authenticator.
+In this section we will create EC2 [Instance profiles](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) with appropriate IAM Roles for worker nodes and master nodes in order to make them work with CNI plugin as well as to use with heptio authenticator.
+
+#### Role for CNI
+Both master and workers nodes will require access to Elastic Network Interface - [ENI](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html) in order to work with [VPC CNI plugin](https://github.com/aws/amazon-vpc-cni-k8s). The required policy is below:
+
+```
+{
+    "Effect": "Allow",
+    "Action": [
+        "ec2:CreateNetworkInterface",
+        "ec2:AttachNetworkInterface",
+        "ec2:DeleteNetworkInterface",
+        "ec2:DetachNetworkInterface",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeInstances",
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:AssignPrivateIpAddresses"
+    ],
+    "Resource": [
+        "*"
+    ]
+},
+{
+    "Effect": "Allow",
+    "Action": "tag:TagResources",
+    "Resource": "*"
+}
+```
+
+### ECR Access
+
+In order to have access to ECR repositories we can use AWS managed policy [AmazonEC2ContainerRegistryReadOnly](https://docs.aws.amazon.com/AmazonECR/latest/userguide/ecr_managed_policies.html#AmazonEC2ContainerRegistryReadOnly)
+
+### Create policies
+As usually we use CloudFormation to create those resources for us. Please refer to IAM documentation if you want to create those resources manually.
+
+```
+export CFN_RESOURCES=$ENV-resources
+
+aws cloudformation create-stack --stack-name $CFN_RESOURCES --template-body file://templates/resources.yaml --parameters ParameterKey=EnvironmentName,ParameterValue=$ENV --capabilities CAPABILITY_NAMED_IAM
+```
+
+Now get ARN of instance profiles to use later for instances.
+
+```
+export NODE_PROFILE=$(aws cloudformation describe-stacks --stack-name $CFN_RESOURCES --query 'Stacks[0].Outputs[?OutputKey==`NodeInstanceProfile`].OutputValue' --output text)
+
+export MASTER_PROFILE=$(aws cloudformation describe-stacks --stack-name $CFN_RESOURCES --query 'Stacks[0].Outputs[?OutputKey==`MasterInstanceProfile`].OutputValue' --output text)
+```
+
 
 ## Compute Instances
 
-The compute instances in this lab will be provisioned using [Ubuntu Server](https://www.ubuntu.com/server) 16.04, which has good support for the [cri-containerd container runtime](https://github.com/containerd/cri-containerd). Each compute instance will be provisioned with a fixed private IP address to simplify the Kubernetes bootstrapping process.
+The compute instances in this lab will be provisioned using [Amazon Linux 2](https://aws.amazon.com/amazon-linux-2) minimal, which provides packets that enable easy integration with AWS and tuned kernel to work on EC2. We will use [AutoScalingGroup](https://aws.amazon.com/ec2/autoscaling) to ensure that all instances are healthy and replaced in case of failure.
 
 ### Kubernetes Controllers
 

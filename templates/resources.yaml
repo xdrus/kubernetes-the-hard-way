@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM Roles and Instance profiles
+
+Parameters:
+
+  EnvironmentName:
+      Description: An environment name that will be prefixed to resource names
+      Type: String
+
+Resources:
+    MasterRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Path: !Sub "/${EnvironmentName}/"
+            RoleName: master-role
+            AssumeRolePolicyDocument: |
+                {
+                    "Statement": [{
+                        "Action": "sts:AssumeRole",
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "ec2.amazonaws.com"
+                        }
+                    }]
+                }
+            ManagedPolicyArns:
+              - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+    MasterInstanceProfile:
+        Type: AWS::IAM::InstanceProfile
+        Properties:
+            Path: !Sub "/${EnvironmentName}/"
+            Roles:
+                - !Ref MasterRole
+            InstanceProfileName: masters-profile
+
+    NodeRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Path: !Sub "/${EnvironmentName}/"
+            RoleName: node-role
+            AssumeRolePolicyDocument: |
+                {
+                    "Statement": [{
+                        "Action": "sts:AssumeRole",
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": "ec2.amazonaws.com"
+                        }
+                    }]
+                }
+            ManagedPolicyArns:
+              - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+    NodeInstanceProfile:
+        Type: AWS::IAM::InstanceProfile
+        Properties:
+            Path: !Sub "/${EnvironmentName}/"
+            Roles:
+                - !Ref NodeRole
+            InstanceProfileName: nodes-profile
+
+    CNIVPCPolicy:
+        Type: "AWS::IAM::Policy"
+        Properties:
+          PolicyName: !Sub "${EnvironmentName}-cni-vpc-policy"
+          PolicyDocument: |
+            {
+              "Version" : "2012-10-17",
+              "Statement":
+                [
+                  {
+                      "Effect": "Allow",
+                      "Action": [
+                          "ec2:CreateNetworkInterface",
+                          "ec2:AttachNetworkInterface",
+                          "ec2:DeleteNetworkInterface",
+                          "ec2:DetachNetworkInterface",
+                          "ec2:DescribeNetworkInterfaces",
+                          "ec2:DescribeInstances",
+                          "ec2:ModifyNetworkInterfaceAttribute",
+                          "ec2:AssignPrivateIpAddresses"
+                      ],
+                      "Resource": [
+                          "*"
+                      ]
+                  },
+                  {
+                      "Effect": "Allow",
+                      "Action": "tag:TagResources",
+                      "Resource": "*"
+                  }
+                ]
+              }
+          Roles:
+            - !Ref MasterRole
+            - !Ref NodeRole
+
+Outputs:
+
+    NodeInstanceProfile:
+        Description: Node's profile ARN
+        Value: !GetAtt NodeInstanceProfile.Arn
+
+    MasterInstanceProfile:
+        Description: Master's profile ARN
+        Value: !GetAtt MasterInstanceProfile.Arn
