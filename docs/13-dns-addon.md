@@ -75,4 +75,4 @@ Name:      kubernetes
 Address 1: 10.32.0.1 kubernetes.default.svc.cluster.local
 ```
 
-Next: [Smoke Test](13-smoke-test.md)
+Next: [Smoke Test](14-smoke-test.md)

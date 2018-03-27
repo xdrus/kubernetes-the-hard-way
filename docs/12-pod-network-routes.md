@@ -57,4 +57,4 @@ kubernetes-route-10-200-1-0-24  kubernetes-the-hard-way  10.200.1.0/24  10.240.0
 kubernetes-route-10-200-2-0-24  kubernetes-the-hard-way  10.200.2.0/24  10.240.0.22               1000
 ```
 
-Next: [Deploying the DNS Cluster Add-on](12-dns-addon.md)
+Next: [Deploying the DNS Cluster Add-on](13-dns-addon.md)

@@ -108,4 +108,4 @@ kubectl version --client
 Client Version: version.Info{Major:"1", Minor:"9", GitVersion:"v1.9.0", GitCommit:"925c127ec6b946659ad0fd596fa959be43f0cc05", GitTreeState:"clean", BuildDate:"2017-12-15T21:07:38Z", GoVersion:"go1.9.2", Compiler:"gc", Platform:"darwin/amd64"}
 ```
 
-Next: [Provisioning Compute Resources](03-compute-resources.md)
+Next: [Provisioning Network Resources](03-network-resources.md)

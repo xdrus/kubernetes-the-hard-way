@@ -232,4 +232,4 @@ worker-1   Ready     <none>    18s       v1.9.0
 worker-2   Ready     <none>    18s       v1.9.0
 ```
 
-Next: [Configuring kubectl for Remote Access](10-configuring-kubectl.md)
+Next: [Configuring kubectl for Remote Access](11-configuring-kubectl.md)

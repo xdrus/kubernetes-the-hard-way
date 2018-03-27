@@ -98,4 +98,4 @@ for instance in worker-0 worker-1 worker-2; do
 done
 ```
 
-Next: [Generating the Data Encryption Config and Key](06-data-encryption-keys.md)
+Next: [Generating the Data Encryption Config and Key](07-data-encryption-keys.md)
