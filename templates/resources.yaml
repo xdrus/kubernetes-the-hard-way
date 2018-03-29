@@ -96,6 +96,32 @@ Resources:
             - !Ref MasterRole
             - !Ref NodeRole
 
+    # __TODO__ Add tag based constrains
+    MasterEtcdPolicy:
+        Type: "AWS::IAM::Policy"
+        Properties:
+          PolicyName: !Sub "${EnvironmentName}-etcd-policy"
+          PolicyDocument: |
+            {
+              "Version" : "2012-10-17",
+              "Statement":
+                [
+                  {
+                      "Effect": "Allow",
+                      "Action": [
+                          "autoscaling:DescribeAutoScalingInstances",
+                          "autoscaling:DescribeAutoScalingGroups",
+                          "ec2:DescribeInstances"
+                      ],
+                      "Resource": [
+                          "*"
+                      ]
+                  }
+                ]
+              }
+          Roles:
+            - !Ref MasterRole
+
 Outputs:
 
     NodeInstanceProfile:
