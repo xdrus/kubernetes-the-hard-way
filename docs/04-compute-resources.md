@@ -66,9 +66,34 @@ export MASTER_PROFILE=$(aws cloudformation describe-stacks --stack-name $CFN_RES
 
 The compute instances in this lab will be provisioned using [Amazon Linux 2](https://aws.amazon.com/amazon-linux-2) minimal, which provides packets that enable easy integration with AWS and tuned kernel to work on EC2. We will use [AutoScalingGroup](https://aws.amazon.com/ec2/autoscaling) to ensure that all instances are healthy and replaced in case of failure.
 
+### SSH KeyPair
+
+First of all we need to create an [SSH KeyPair](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html) so we can log into our instances for maintenance and troubleshooting. You can either [create a new keypair](https://docs.aws.amazon.com/cli/latest/reference/ec2/create-key-pair.html) or [import an existing one](https://docs.aws.amazon.com/cli/latest/reference/ec2/import-key-pair.html).
+
+__TODO__: show how to create a new keypair.
+
+Once you have done this set environment variable to your keypair-name.
+
+```bash
+export SSH_KEY=hardway
+```
+
 ### Kubernetes Controllers
 
 Create three compute instances which will host the Kubernetes control plane:
+
+
+```bash
+export CFN_INSTANCES=$ENV-instances
+
+aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file://templates/instances.yaml --parameters \
+      ParameterKey=EnvironmentName,ParameterValue=$ENV \
+      ParameterKey=VPC,ParameterValue=$VPC \
+      ParameterKey=Subnets,ParameterValue=\"$CONTROL_SUBNETS\" \
+      ParameterKey=SecurityGroup,ParameterValue=$CONTROL_SG \
+      ParameterKey=InstanceProfile,ParameterValue=$MASTER_PROFILE \
+      ParameterKey=KeyName,ParameterValue=$SSH_KEY
+```
 
 ```
 for i in 0 1 2; do

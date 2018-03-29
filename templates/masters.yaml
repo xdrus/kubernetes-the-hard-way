@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ASG for masters
+
+Parameters:
+
+    EnvironmentName:
+      Description: An environment name that will be prefixed to resource names
+      Type: String
+
+    InstanceType:
+        Description: Which instance type should we use?
+        Type: String
+        Default: t2.medium
+
+    ClusterSize:
+        Description: How many instances do you want to initially deploy?
+        Type: Number
+        Default: 3
+
+    MaxSize:
+        Description: Maximum size of ASG?
+        Type: Number
+        Default: 5
+
+    VPC:
+        Description: Choose which VPC this cluster should be deployed to
+        Type: AWS::EC2::VPC::Id
+
+    Subnets:
+        Description: Choose which subnets this cluster should be deployed to
+        Type: List<AWS::EC2::Subnet::Id>
+
+    SecurityGroup:
+        Description: Select the Security Group to use for the instances
+        Type: List<AWS::EC2::SecurityGroup::Id>
+
+    InstanceProfile:
+        Description: InstanceProfile to use
+        Type: String
+
+    KeyName:
+        Description: SSH keypair name
+        Type: AWS::EC2::KeyPair::KeyName
+
+Mappings:
+  RegionToAMI:
+    ap-northeast-1:
+      standard: ami-39e37b5f
+      min: ami-62e07804
+    ap-northeast-2:
+      standard: ami-5295353c
+      min: ami-a19737cf
+    ap-south-1:
+      standard: ami-05194e6a
+      min: ami-3f184f50
+    ap-southeast-1:
+      standard: ami-6755261b
+      min: ami-f657248a
+    ap-southeast-2:
+      standard: ami-1fe21f7d
+      min: ami-f5e11c97
+    ca-central-1:
+      standard: ami-5984013d
+      min: ami-9f8702fb
+    eu-central-1:
+      standard: ami-0471e36b
+      min: ami-4072e02f
+    eu-west-1:
+      standard: ami-db51c2a2
+      min: ami-8e52c1f7
+    eu-west-2:
+      standard: ami-22a8b046
+      min: ami-18b6ae7c
+    eu-west-3:
+      standard: ami-680eb915
+      min: ami-9001b6ed
+    sa-east-1:
+      standard: ami-f052109c
+      min: ami-7652101a
+    us-east-1:
+      standard: ami-74da830e
+      min: ami-ccdd84b6
+    us-east-2:
+      standard: ami-e782a982
+      min: ami-1c8ca779
+    us-west-1:
+      standard: ami-1dacac7d
+      min: ami-96ababf6
+    us-west-2:
+      standard: ami-8f08bcf7
+      min: ami-7df74005
+
+Resources:
+
+    LaunchConfiguration:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+            ImageId:  !FindInMap [RegionToAMI, !Ref "AWS::Region", min]
+            InstanceType: !Ref InstanceType
+            SecurityGroups: !Ref SecurityGroup
+            IamInstanceProfile: !Ref InstanceProfile
+            KeyName: !Ref KeyName
+            # BlockDeviceMappings:
+            #   - DeviceName: /dev/xvdb
+            #     Ebs:
+            #       VolumeSize: 30
+            #       VolumeType: gp2
+            UserData:
+                "Fn::Base64": !Sub |
+                    Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+                    MIME-Version: 1.0
+
+                    # --==BOUNDARY==
+                    # Content-Type: text/cloud-boothook; charset="us-ascii"
+                    #
+                    # # Configure EBS volume for etcd storage
+                    # cloud-init-per once create_fs    mkfs -L etcd-storage -t ext4 /dev/xvdb
+                    # cloud-init-per once create_dir   mkdir -p  /opt/data/
+                    # cloud-init-per once modify_fstab echo "LABEL=etcd-storage     /opt/data           ext4    defaults,noatime,nofail,nosuid  0   2" >> /etc/fstab
+                    # cloud-init-per once mount_dir    mount  /opt/data
+
+
+
+                    --==BOUNDARY==
+                    Content-Type: text/x-shellscript; charset="us-ascii"
+
+                    #!/bin/bash
+                    cleanup () {
+                      CODE=$?
+                      exit $CODE
+                    }
+
+                    trap "cleanup" INT TERM EXIT
+                    INTERNAL_IP=$(curl -sS --retry 3 http://169.254.169.254/latest/meta-data/local-ipv4)
+                    EC2_INSTANCE_ID=$(curl -sS --retry 3 http://169.254.169.254/latest/meta-data/instance-id)
+                    HOSTNAME=$(curl -sS --retry 3 http://169.254.169.254/latest/meta-data/local-hostname)
+                    yum update -y
+                    yum install -y docker
+                    --==BOUNDARY==
+
+    AutoScalingGroup:
+        Type: AWS::AutoScaling::AutoScalingGroup
+        Properties:
+            VPCZoneIdentifier: !Ref Subnets
+            LaunchConfigurationName: !Ref LaunchConfiguration
+            MinSize: !Ref ClusterSize
+            MaxSize: !Ref MaxSize
+            DesiredCapacity: !Ref ClusterSize
+            Tags:
+                - Key: Name
+                  Value: !Sub ${EnvironmentName}-host
+                  PropagateAtLaunch: true
+        # CreationPolicy:
+        #     ResourceSignal:
+        #         Timeout: PT5M
+        UpdatePolicy:
+            AutoScalingRollingUpdate:
+                MinInstancesInService: 1
+                MaxBatchSize: 1
+                PauseTime: PT5M
+                SuspendProcesses:
+                  - HealthCheck
+                  - ReplaceUnhealthy
+                  - AZRebalance
+                  - AlarmNotification
+                  - ScheduledActions
+                # WaitOnResourceSignals: true
