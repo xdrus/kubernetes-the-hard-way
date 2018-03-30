@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: ASG for masters
+Description: ASG for modes
 
 Parameters:
 
@@ -100,30 +100,8 @@ Resources:
             SecurityGroups: !Ref SecurityGroup
             IamInstanceProfile: !Ref InstanceProfile
             KeyName: !Ref KeyName
-            # BlockDeviceMappings:
-            #   - DeviceName: /dev/xvdb
-            #     Ebs:
-            #       VolumeSize: 30
-            #       VolumeType: gp2
             UserData:
                 "Fn::Base64": !Sub |
-                    Content-Type: multipart/mixed; boundary="==BOUNDARY=="
-                    MIME-Version: 1.0
-
-                    # --==BOUNDARY==
-                    # Content-Type: text/cloud-boothook; charset="us-ascii"
-                    #
-                    # # Configure EBS volume for etcd storage
-                    # cloud-init-per once create_fs    mkfs -L etcd-storage -t ext4 /dev/xvdb
-                    # cloud-init-per once create_dir   mkdir -p  /opt/data/
-                    # cloud-init-per once modify_fstab echo "LABEL=etcd-storage     /opt/data           ext4    defaults,noatime,nofail,nosuid  0   2" >> /etc/fstab
-                    # cloud-init-per once mount_dir    mount  /opt/data
-
-
-
-                    --==BOUNDARY==
-                    Content-Type: text/x-shellscript; charset="us-ascii"
-
                     #!/bin/bash
                     cleanup () {
                       CODE=$?
@@ -135,7 +113,6 @@ Resources:
                     yum update -y
                     yum install awscli
                     yum install -y docker
-                    --==BOUNDARY==
 
     AutoScalingGroup:
         Type: AWS::AutoScaling::AutoScalingGroup
@@ -149,18 +126,6 @@ Resources:
                 - Key: Name
                   Value: !Sub ${EnvironmentName}-host
                   PropagateAtLaunch: true
-        # CreationPolicy:
-        #     ResourceSignal:
-        #         Timeout: PT5M
-        UpdatePolicy:
-            AutoScalingRollingUpdate:
-                MinInstancesInService: 1
-                MaxBatchSize: 1
-                PauseTime: PT5M
-                SuspendProcesses:
-                  - HealthCheck
-                  - ReplaceUnhealthy
-                  - AZRebalance
-                  - AlarmNotification
-                  - ScheduledActions
-                # WaitOnResourceSignals: true
+                - Key: Environment
+                  Value: !Ref Environment
+                  PropagateAtLaunch: true

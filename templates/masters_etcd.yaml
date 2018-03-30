@@ -100,30 +100,8 @@ Resources:
             SecurityGroups: !Ref SecurityGroup
             IamInstanceProfile: !Ref InstanceProfile
             KeyName: !Ref KeyName
-            # BlockDeviceMappings:
-            #   - DeviceName: /dev/xvdb
-            #     Ebs:
-            #       VolumeSize: 30
-            #       VolumeType: gp2
             UserData:
-                "Fn::Base64": |
-                    Content-Type: multipart/mixed; boundary="==BOUNDARY=="
-                    MIME-Version: 1.0
-
-                    # --==BOUNDARY==
-                    # Content-Type: text/cloud-boothook; charset="us-ascii"
-                    #
-                    # # Configure EBS volume for etcd storage
-                    # cloud-init-per once create_fs    mkfs -L etcd-storage -t ext4 /dev/xvdb
-                    # cloud-init-per once create_dir   mkdir -p  /opt/data/
-                    # cloud-init-per once modify_fstab echo "LABEL=etcd-storage     /opt/data           ext4    defaults,noatime,nofail,nosuid  0   2" >> /etc/fstab
-                    # cloud-init-per once mount_dir    mount  /opt/data
-
-
-
-                    --==BOUNDARY==
-                    Content-Type: text/x-shellscript; charset="us-ascii"
-
+                "Fn::Base64": !Sub |
                     #!/bin/bash
                     cleanup () {
                       CODE=$?
@@ -144,7 +122,8 @@ Resources:
 
                     INTERNAL_IP=$(curl -sS --retry 3 http://169.254.169.254/latest/meta-data/local-ipv4)
                     EC2_INSTANCE_ID=$(curl -sS --retry 3 http://169.254.169.254/latest/meta-data/instance-id)
-                    HOSTNAME=$(curl -sS --retry 3 http://169.254.169.254/latest/meta-data/local-hostname)
+
+                    export AWS_DEFAULT_REGION=${AWS::Region}
 
                     # Get ASG name the instance belong to
                     ASG_NAME=$(aws autoscaling describe-auto-scaling-instances --instance-ids $EC2_INSTANCE_ID --query AutoScalingInstances[0].AutoScalingGroupName --out text)
@@ -171,6 +150,7 @@ Resources:
                     # Final test that ASG has been stabilized (because there are two exits from 'for' loop)
                     [ $ACTUAL_SIZE -eq $DESIRED_SIZE ] || (echo "ASG hasn't stabilized"; exit 1)
 
+                    INSTANCES=$(echo "$ASG_DATA" | grep -i instance | awk '{print $2}')
                     ETCD_INITIAL_CLUSTER=$(aws ec2 describe-instances --instance-ids $INSTANCES --query 'Reservations[].Instances[].[InstanceId,PrivateIpAddress]' --output text | sort | awk '{ printf("%s=https://%s:2380,", $1, $2) }' | sed 's/,$//g')
 
                     cat > /etc/systemd/system/etcd.service <<EOF
@@ -182,22 +162,23 @@ Resources:
 
                     [Service]
                     TimeoutStartSec=0
-                    ExecStartPre=/usr/bin/docker pull ${REGISTRY}:${ETCD_VERSION}
-                    #ExecStartPre=/usr/bin/docker rm etcd
-                    ExecStart=docker run \\
+                    ExecStartPre=/usr/bin/docker pull $REGISTRY:$ETCD_VERSION
+                    ExecStart=/usr/bin/docker run \\
                       -p 2379:2379 \\
                       -p 2380:2380 \\
                       --net host \\
-                      --volume=${DATA_DIR}:/etcd-data \\
-                      --name etcd ${REGISTRY}:${ETCD_VERSION} \\
+                      --volume=$DATA_DIR:/etcd-data \\
+                      --name etcd $REGISTRY:$ETCD_VERSION \\
                       /usr/local/bin/etcd \\
-                      --data-dir=/etcd-data --name ${EC2_INSTANCE_ID} \\
-                      --initial-advertise-peer-urls http://${INTERNAL_IP}:2380 \\
-                      --listen-peer-urls http://${INTERNAL_IP}:2380 \\
-                      --advertise-client-urls https://${INTERNAL_IP}:2379,http://127.0.0.1:2379 \\
-                      --listen-client-urls https://${INTERNAL_IP}:2379,http://127.0.0.1:2379 \\
-                      --initial-cluster ${ETCD_INITIAL_CLUSTER} \\
-                      --initial-cluster-state new --initial-cluster-token ${ASG_NAME}
+                        --data-dir=/etcd-data --name $EC2_INSTANCE_ID \\
+                        --initial-advertise-peer-urls https://$INTERNAL_IP:2380 \\
+                        --listen-peer-urls https://$INTERNAL_IP:2380 \\
+                        --advertise-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
+                        --listen-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
+                        --initial-cluster $ETCD_INITIAL_CLUSTER \\
+                        --initial-cluster-state new --initial-cluster-token $ASG_NAME \\
+                        --auto-tls \\
+                        --peer-auto-tls
 
                     ExecStop=/usr/bin/docker stop etcd
                     ExecStopPost=/usr/bin/docker rm -f etcd
@@ -217,7 +198,6 @@ Resources:
                     sudo systemctl start docker
                     sudo systemctl enable etcd
                     sudo systemctl start etcd
-                    --==BOUNDARY==
 
     AutoScalingGroup:
         Type: AWS::AutoScaling::AutoScalingGroup
@@ -228,21 +208,12 @@ Resources:
             MaxSize: !Ref MaxSize
             DesiredCapacity: !Ref ClusterSize
             Tags:
-                - Key: Name
-                  Value: !Sub ${EnvironmentName}-host
+                - Key: Environment
+                  Value: !Ref Environment
                   PropagateAtLaunch: true
-        # CreationPolicy:
-        #     ResourceSignal:
-        #         Timeout: PT5M
-        UpdatePolicy:
-            AutoScalingRollingUpdate:
-                MinInstancesInService: 1
-                MaxBatchSize: 1
-                PauseTime: PT5M
-                SuspendProcesses:
-                  - HealthCheck
-                  - ReplaceUnhealthy
-                  - AZRebalance
-                  - AlarmNotification
-                  - ScheduledActions
-                # WaitOnResourceSignals: true
+                - Key: Network
+                  Value: Control
+                  PropagateAtLaunch: true
+                - Key: Name
+                  Value: !Sub '${EnvironmentName}-control-node'
+                  PropagateAtLaunch: true
