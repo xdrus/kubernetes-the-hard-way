@@ -7,6 +7,10 @@ Parameters:
       Description: An environment name that will be prefixed to resource names
       Type: String
 
+  CMK:
+      Description: ARN of KMS key used to encrypt/decrypt parameters
+      Type: String
+
 Resources:
     MasterRole:
         Type: AWS::IAM::Role
@@ -122,6 +126,38 @@ Resources:
           Roles:
             - !Ref MasterRole
 
+    # __TODO__ Add tag based constrains
+    MasterSSMPolicy:
+        Type: "AWS::IAM::Policy"
+        Properties:
+          PolicyName: !Sub "${EnvironmentName}-ssm-policy"
+          PolicyDocument: !Sub |
+            {
+              "Version" : "2012-10-17",
+              "Statement":
+                [
+                  {
+                      "Effect": "Allow",
+                      "Action": [
+                          "ssm:GetParameters"
+                      ],
+                      "Resource": [
+                          "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EnvironmentName}/*"
+                      ]
+                  },
+                  {
+                      "Effect":"Allow",
+                      "Action":[
+                        "kms:Decrypt"
+                      ],
+                      "Resource":[
+                        "${CMK}"
+                      ]
+                  }
+                ]
+              }
+          Roles:
+            - !Ref MasterRole
 Outputs:
 
     NodeInstanceProfile:

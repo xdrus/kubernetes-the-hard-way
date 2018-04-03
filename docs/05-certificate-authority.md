@@ -9,6 +9,9 @@ In this section you will provision a Certificate Authority that can be used to g
 Create the CA configuration file:
 
 ```
+mkdir ../$ENV-ca
+cd ../$ENV-ca
+
 cat > ca-config.json <<EOF
 {
   "signing": {
@@ -80,11 +83,11 @@ cat > admin-csr.json <<EOF
   },
   "names": [
     {
-      "C": "US",
-      "L": "Portland",
+      "C": "AU",
+      "L": "Sydney",
       "O": "system:masters",
       "OU": "Kubernetes The Hard Way",
-      "ST": "Oregon"
+      "ST": "NSW"
     }
   ]
 }
@@ -109,114 +112,14 @@ admin-key.pem
 admin.pem
 ```
 
-### The Kubelet Client Certificates
+### The Kubelet and kube-proxy Client Certificates
 
-Kubernetes uses a [special-purpose authorization mode](https://kubernetes.io/docs/admin/authorization/node/) called Node Authorizer, that specifically authorizes API requests made by [Kubelets](https://kubernetes.io/docs/concepts/overview/components/#kubelet). In order to be authorized by the Node Authorizer, Kubelets must use a credential that identifies them as being in the `system:nodes` group, with a username of `system:node:<nodeName>`. In this section you will create a certificate for each Kubernetes worker node that meets the Node Authorizer requirements.
+Kubernetes uses a [special-purpose authorization mode](https://kubernetes.io/docs/admin/authorization/node/) called Node Authorizer, that specifically authorizes API requests made by [Kubelets](https://kubernetes.io/docs/concepts/overview/components/#kubelet). Instead of using certificate based authorization we are going to use [webhook mode](https://kubernetes.io/docs/admin/authorization/webhook/), so we don't need worker nodes certificates.
 
-Generate a certificate and private key for each Kubernetes worker node:
-
-```
-for instance in worker-0 worker-1 worker-2; do
-cat > ${instance}-csr.json <<EOF
-{
-  "CN": "system:node:${instance}",
-  "key": {
-    "algo": "rsa",
-    "size": 2048
-  },
-  "names": [
-    {
-      "C": "US",
-      "L": "Portland",
-      "O": "system:nodes",
-      "OU": "Kubernetes The Hard Way",
-      "ST": "Oregon"
-    }
-  ]
-}
-EOF
-
-EXTERNAL_IP=$(gcloud compute instances describe ${instance} \
-  --format 'value(networkInterfaces[0].accessConfigs[0].natIP)')
-
-INTERNAL_IP=$(gcloud compute instances describe ${instance} \
-  --format 'value(networkInterfaces[0].networkIP)')
-
-cfssl gencert \
-  -ca=ca.pem \
-  -ca-key=ca-key.pem \
-  -config=ca-config.json \
-  -hostname=${instance},${EXTERNAL_IP},${INTERNAL_IP} \
-  -profile=kubernetes \
-  ${instance}-csr.json | cfssljson -bare ${instance}
-done
-```
-
-Results:
-
-```
-worker-0-key.pem
-worker-0.pem
-worker-1-key.pem
-worker-1.pem
-worker-2-key.pem
-worker-2.pem
-```
-
-### The kube-proxy Client Certificate
-
-Create the `kube-proxy` client certificate signing request:
-
-```
-cat > kube-proxy-csr.json <<EOF
-{
-  "CN": "system:kube-proxy",
-  "key": {
-    "algo": "rsa",
-    "size": 2048
-  },
-  "names": [
-    {
-      "C": "US",
-      "L": "Portland",
-      "O": "system:node-proxier",
-      "OU": "Kubernetes The Hard Way",
-      "ST": "Oregon"
-    }
-  ]
-}
-EOF
-```
-
-Generate the `kube-proxy` client certificate and private key:
-
-```
-cfssl gencert \
-  -ca=ca.pem \
-  -ca-key=ca-key.pem \
-  -config=ca-config.json \
-  -profile=kubernetes \
-  kube-proxy-csr.json | cfssljson -bare kube-proxy
-```
-
-Results:
-
-```
-kube-proxy-key.pem
-kube-proxy.pem
-```
 
 ### The Kubernetes API Server Certificate
 
-The `kubernetes-the-hard-way` static IP address will be included in the list of subject alternative names for the Kubernetes API Server certificate. This will ensure the certificate can be validated by remote clients.
-
-Retrieve the `kubernetes-the-hard-way` static IP address:
-
-```
-KUBERNETES_PUBLIC_ADDRESS=$(gcloud compute addresses describe kubernetes-the-hard-way \
-  --region $(gcloud config get-value compute/region) \
-  --format 'value(address)')
-```
+The Load Balancer URL will be included in the list of subject alternative names for the Kubernetes API Server certificate. This will ensure the certificate can be validated by remote clients. We had it stored in LB_URL environment variable in [Provisioning Network Resources](03-network-resources.md) section.
 
 Create the Kubernetes API Server certificate signing request:
 
@@ -230,11 +133,11 @@ cat > kubernetes-csr.json <<EOF
   },
   "names": [
     {
-      "C": "US",
-      "L": "Portland",
+      "C": "AU",
+      "L": "Sydney",
       "O": "Kubernetes",
       "OU": "Kubernetes The Hard Way",
-      "ST": "Oregon"
+      "ST": "NSW"
     }
   ]
 }
@@ -248,7 +151,7 @@ cfssl gencert \
   -ca=ca.pem \
   -ca-key=ca-key.pem \
   -config=ca-config.json \
-  -hostname=10.32.0.1,10.240.0.10,10.240.0.11,10.240.0.12,${KUBERNETES_PUBLIC_ADDRESS},127.0.0.1,kubernetes.default \
+  -hostname=${LB_URL},127.0.0.1,kubernetes.default \
   -profile=kubernetes \
   kubernetes-csr.json | cfssljson -bare kubernetes
 ```
@@ -262,22 +165,47 @@ kubernetes.pem
 
 ## Distribute the Client and Server Certificates
 
-Copy the appropriate certificates and private keys to each worker instance:
+We will use [SSM parameter store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-paramstore.html) to save and get certificates and private keys on instances. Certificates will be stored as a plain text values and private keys will be encrypted with KMS. For simplicity we are going to use account default KMS key ant restrict access by IAM policies, however, in production environment it would be preferable to use [a custom KMS key](https://docs.aws.amazon.com/kms/latest/developerguide/services-parameter-store.html).
 
-```
-for instance in worker-0 worker-1 worker-2; do
-  gcloud compute scp ca.pem ${instance}-key.pem ${instance}.pem ${instance}:~/
-done
-```
+Create plain text parameters for CA and master's certificates
 
-Copy the appropriate certificates and private keys to each controller instance:
-
-```
-for instance in controller-0 controller-1 controller-2; do
-  gcloud compute scp ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem ${instance}:~/
-done
+```bash
+aws ssm put-parameter --name "/$ENV/ca/ca" --value "$(cat ca.pem)" --type String
+aws ssm put-parameter --name "/$ENV/ca/master" --value "$(cat kubernetes.pem)" --type String
 ```
 
-> The `kube-proxy` and `kubelet` client certificates will be used to generate client authentication configuration files in the next lab.
+Create encrypted parameter for master's private key
+
+```bash
+aws ssm put-parameter --name "/$ENV/ca/private/master" --value "$(cat kubernetes-key.pem)" --type SecureString
+```
+
+In order to get and restrict access from instances we use the following IAM policy for master nodes (it is created in the section [Provisioning compute resources](04-compute-resources.md)):
+```json
+{
+  "Version" : "2012-10-17",
+  "Statement":
+    [
+      {
+          "Effect": "Allow",
+          "Action": [
+              "ssm:GetParameters"
+          ],
+          "Resource": [
+              "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EnvironmentName}/*"
+          ]
+      },
+      {
+          "Effect":"Allow",
+          "Action":[
+            "kms:Decrypt"
+          ],
+          "Resource":[
+            "${CMK}"
+          ]
+      }
+    ]
+  }
+```
 
 Next: [Generating Kubernetes Configuration Files for Authentication](06-kubernetes-configuration-files.md)

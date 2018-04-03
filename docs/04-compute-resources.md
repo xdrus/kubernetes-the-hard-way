@@ -6,8 +6,12 @@ Kubernetes requires a set of machines to host the Kubernetes control plane and t
 
 We will use a set of supplement resources in order to simplify cluster management, such as SSM Parameter store and EC2 instance profiles with IAM roles.
 
-### SSM Parameter Store or S3
-__TODO__
+### SSM Parameter Store key
+To store sensitive data, such us master's private keys we will use [SSM parameter store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-paramstore.html) with values encrypted by default SSM KMS key. This is done for simplicity, in production environment you would rather create a custom key with hardened IAM policy. We will need a KMS key ARN to grant access for instances to it, the default one can be get with the command below:
+
+```bash
+export CMK=$(aws kms describe-key --key-id alias/aws/ssm --query KeyMetadata.Arn --output text)
+```
 
 ### IAM roles
 
@@ -50,7 +54,7 @@ As usually we use CloudFormation to create those resources for us. Please refer 
 ```
 export CFN_RESOURCES=$ENV-resources
 
-aws cloudformation create-stack --stack-name $CFN_RESOURCES --template-body file://templates/resources.yaml --parameters ParameterKey=EnvironmentName,ParameterValue=$ENV --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation create-stack --stack-name $CFN_RESOURCES --template-body file://templates/resources.yaml --parameters ParameterKey=EnvironmentName,ParameterValue=$ENV ParameterKey=CMK,ParameterValue=$CMK --capabilities CAPABILITY_NAMED_IAM
 ```
 
 Now get ARN of instance profiles to use later for instances.
@@ -84,7 +88,7 @@ Create three compute instances which will host the Kubernetes control plane:
 
 
 ```bash
-export CFN_INSTANCES=$ENV-instances
+export CFN_INSTANCES=$ENV-control-nodes
 
 aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file://templates/instances.yaml --parameters \
       ParameterKey=EnvironmentName,ParameterValue=$ENV \
@@ -95,67 +99,58 @@ aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file
       ParameterKey=KeyName,ParameterValue=$SSH_KEY
 ```
 
-```
-for i in 0 1 2; do
-  gcloud compute instances create controller-${i} \
-    --async \
-    --boot-disk-size 200GB \
-    --can-ip-forward \
-    --image-family ubuntu-1604-lts \
-    --image-project ubuntu-os-cloud \
-    --machine-type n1-standard-1 \
-    --private-network-ip 10.240.0.1${i} \
-    --scopes compute-rw,storage-ro,service-management,service-control,logging-write,monitoring \
-    --subnet kubernetes \
-    --tags kubernetes-the-hard-way,controller
-done
-```
-
-
 ### Kubernetes Workers
-
-Each worker instance requires a pod subnet allocation from the Kubernetes cluster CIDR range. The pod subnet allocation will be used to configure container networking in a later exercise. The `pod-cidr` instance metadata will be used to expose pod subnet allocations to compute instances at runtime.
-
-> The Kubernetes cluster CIDR range is defined by the Controller Manager's `--cluster-cidr` flag. In this tutorial the cluster CIDR range will be set to `10.200.0.0/16`, which supports 254 subnets.
 
 Create three compute instances which will host the Kubernetes worker nodes:
 
-```
-for i in 0 1 2; do
-  gcloud compute instances create worker-${i} \
-    --async \
-    --boot-disk-size 200GB \
-    --can-ip-forward \
-    --image-family ubuntu-1604-lts \
-    --image-project ubuntu-os-cloud \
-    --machine-type n1-standard-1 \
-    --metadata pod-cidr=10.200.${i}.0/24 \
-    --private-network-ip 10.240.0.2${i} \
-    --scopes compute-rw,storage-ro,service-management,service-control,logging-write,monitoring \
-    --subnet kubernetes \
-    --tags kubernetes-the-hard-way,worker
-done
+```bash
+export CFN_INSTANCES=$ENV-worker-nodes
+
+aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file://templates/instances.yaml --parameters \
+      ParameterKey=EnvironmentName,ParameterValue=$ENV \
+      ParameterKey=VPC,ParameterValue=$VPC \
+      ParameterKey=Subnets,ParameterValue=\"$CONTROL_SUBNETS\" \
+      ParameterKey=SecurityGroup,ParameterValue=$CONTROL_SG \
+      ParameterKey=InstanceProfile,ParameterValue=$MASTER_PROFILE \
+      ParameterKey=KeyName,ParameterValue=$SSH_KEY
 ```
 
 ### Verification
 
-List the compute instances in your default compute zone:
+List the compute instances in your default region:
 
-```
-gcloud compute instances list
-```
-
-> output
-
-```
-NAME          ZONE        MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP     STATUS
-controller-0  us-west1-c  n1-standard-1               10.240.0.10  XX.XXX.XXX.XXX  RUNNING
-controller-1  us-west1-c  n1-standard-1               10.240.0.11  XX.XXX.X.XX     RUNNING
-controller-2  us-west1-c  n1-standard-1               10.240.0.12  XX.XXX.XXX.XX   RUNNING
-worker-0      us-west1-c  n1-standard-1               10.240.0.20  XXX.XXX.XXX.XX  RUNNING
-worker-1      us-west1-c  n1-standard-1               10.240.0.21  XX.XXX.XX.XXX   RUNNING
-worker-2      us-west1-c  n1-standard-1               10.240.0.22  XXX.XXX.XX.XX   RUNNING
+```bash
+aws ec2 describe-instances --filters Name=tag:Environment,Values=$ENV  --query 'Reservations[].Instances[].[InstanceId,PublicIpAddress,PrivateIpAddress,Tags[?Key==`Name`].Value]'
 ```
 
+> Outputs
+```json
+[
+    [
+        "i-01cdc9d559d0426a5",
+        "13.229.152.241",
+        "10.100.5.39",
+        [
+            "hardway-k8s-control-node"
+        ]
+    ],
+    [
+        "i-0ba2535bc0a4f86a5",
+        "13.250.24.174",
+        "10.100.2.146",
+        [
+            "hardway-k8s-control-node"
+        ]
+    ],
+    [
+        "i-07d0c3a272e3961a1",
+        "52.221.184.21",
+        "10.100.1.57",
+        [
+            "hardway-k8s-control-node"
+        ]
+    ]
+]
+```
 
 Next: [Provisioning a Certificate authority](04-certificate-authority.md)

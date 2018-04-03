@@ -209,7 +209,7 @@ Resources:
             DesiredCapacity: !Ref ClusterSize
             Tags:
                 - Key: Environment
-                  Value: !Ref Environment
+                  Value: !Ref EnvironmentName
                   PropagateAtLaunch: true
                 - Key: Network
                   Value: Control

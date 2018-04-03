@@ -151,6 +151,21 @@ d5e2bff9ca37f5e, started, i-0963e616b5bd30f57, https://10.100.4.92:2380, https:/
 ```
 
 ## Automation
+In real word you will not provision every master node manually so we put all the commands above into the [cloudformation template](./template/masters_etcd.yaml). By running this you will get up and running a new etcd cluster.
+
+
+```bash
+export CFN_INSTANCES=$ENV-control
+
+aws cloudformation create-stack --stack-name $CFN_INSTANCES \
+    --template-body file://templates/masters_etcd.yaml --parameters \
+         ParameterKey=EnvironmentName,ParameterValue=$ENV \
+         ParameterKey=VPC,ParameterValue=$VPC \
+         ParameterKey=Subnets,ParameterValue=\"$CONTROL_SUBNETS\"  \
+         ParameterKey=SecurityGroup,ParameterValue=$CONTROL_SG \
+         ParameterKey=InstanceProfile,ParameterValue=$MASTER_PROFILE \
+         ParameterKey=KeyName,ParameterValue=$SSH_KEY
+```
 
 
 Next: [Bootstrapping the Kubernetes Control Plane](09-bootstrapping-kubernetes-controllers.md)
