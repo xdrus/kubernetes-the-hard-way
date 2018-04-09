@@ -208,4 +208,12 @@ In order to get and restrict access from instances we use the following IAM poli
   }
 ```
 
+Now we can use the following commands to get certificates on master instances (considering that you've set ENV variable):
+
+```bash
+aws ssm get-parameters --name "/$ENV/ca/ca"
+aws ssm get-parameters --name "/$ENV/ca/master"
+aws ssm get-parameters --name "/$ENV/ca/private/master" --with-decryption
+```
+
 Next: [Generating Kubernetes Configuration Files for Authentication](06-kubernetes-configuration-files.md)

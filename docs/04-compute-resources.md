@@ -84,13 +84,36 @@ export SSH_KEY=hardway
 
 ### Kubernetes Controllers
 
-Create three compute instances which will host the Kubernetes control plane:
+Create three compute instances which will host the Kubernetes control plane. There are few prerequisites items we need to install on instances including docker and Kubernets binaries. Also we need to install AWS CLI in order to retrieve data from SSM later. To install docker and AWS CLI we can just use standard repositories available in Amazon Linux 2:
+
+```bash
+yum install -y awscli
+yum install -y docker
+```
+
+However, Kubernetes binaries are not available there, so we will get them manually. The [current way of getting Kubernetes binaries](https://kubernetes.io/docs/getting-started-guides/scratch/#downloading-and-extracting-kubernetes-binaries) is not very suitable for automation, so we will hardcode URLs in our scripts. We need kubectl, kubelet and kube-proxy only, as [other components will be run as pods](https://kubernetes.io/docs/getting-started-guides/scratch/#bootstrapping-the-cluster)
+
+```bash
+PLATFORM=amd64
+KUBE_RELEASE=v1.9.6
+KUBE_URL=https://storage.googleapis.com/kubernetes-release/release
+
+DIR=/usr/local/bin/
+FILES="kubelet kubectl kube-proxy"
+
+for FILE in $FILES; do
+  curl -sS --retry 3 "$KUBE_URL/$KUBE_RELEASE/bin/linux/$PLATFORM/$FILE" -o $DIR/$FILE
+  chmod +x $DIR/$FILE
+done
+```
+
+The above commands can be incorporated in CloudFormation template and used in Userdata section of Launch Configuration. The result template is [../templates/nodes_base.yaml]:
 
 
 ```bash
-export CFN_INSTANCES=$ENV-control-nodes
+export CFN_CONTROL=$ENV-control-nodes
 
-aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file://templates/instances.yaml --parameters \
+aws cloudformation create-stack --stack-name $CFN_CONTROL --template-body file://templates/nodes_base.yaml --parameters \
       ParameterKey=EnvironmentName,ParameterValue=$ENV \
       ParameterKey=VPC,ParameterValue=$VPC \
       ParameterKey=Subnets,ParameterValue=\"$CONTROL_SUBNETS\" \
@@ -101,12 +124,12 @@ aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file
 
 ### Kubernetes Workers
 
-Create three compute instances which will host the Kubernetes worker nodes:
+The worker nodes requires the same software we have installed on the master nodes so far, so at this moment we are going to reuse the same template as of now to provision worker nodes, just change parameters to match worker nodes configuration:
 
 ```bash
-export CFN_INSTANCES=$ENV-worker-nodes
+export CFN_WORKERS=$ENV-worker-nodes
 
-aws cloudformation create-stack --stack-name $CFN_INSTANCES --template-body file://templates/instances.yaml --parameters \
+aws cloudformation create-stack --stack-name $CFN_WORKERS --template-body file://templates/nodes_base.yaml --parameters \
       ParameterKey=EnvironmentName,ParameterValue=$ENV \
       ParameterKey=VPC,ParameterValue=$VPC \
       ParameterKey=Subnets,ParameterValue=\"$CONTROL_SUBNETS\" \

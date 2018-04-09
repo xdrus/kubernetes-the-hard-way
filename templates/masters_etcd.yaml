@@ -110,9 +110,23 @@ Resources:
 
                     trap "cleanup" INT TERM EXIT
 
+                    # Update system and install Docker and AWS cli
                     yum update -y
                     yum install -y awscli
                     yum install -y docker
+
+                    # Get kube's binaries
+                    PLATFORM=amd64
+                    KUBE_RELEASE=v1.9.6
+                    KUBE_URL=https://storage.googleapis.com/kubernetes-release/release
+
+                    DIR=/usr/local/bin/
+                    FILES="kubelet kubectl kube-proxy"
+
+                    for FILE in $FILES; do
+                      curl -sS --retry 3 "$KUBE_URL/$KUBE_RELEASE/bin/linux/$PLATFORM/$FILE" -o $DIR/$FILE
+                      chmod +x $DIR/$FILE
+                    done
 
                     DATA_DIR=/var/lib/etcd
                     mkdir -p $DATA_DIR
