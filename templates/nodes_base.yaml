@@ -45,50 +45,53 @@ Parameters:
 Mappings:
   RegionToAMI:
     ap-northeast-1:
-      standard: ami-39e37b5f
-      min: ami-62e07804
+      standard: ami-3dbcb441
+      min: ami-8bbab2f7
     ap-northeast-2:
-      standard: ami-5295353c
-      min: ami-a19737cf
+      standard: ami-deb916b0
+      min: ami-6db71803
+    ap-northeast-3:
+      standard: ami-2237395f
+      min: ami-25373958
     ap-south-1:
-      standard: ami-05194e6a
-      min: ami-3f184f50
+      standard: ami-28560c47
+      min: ami-24550f4b
     ap-southeast-1:
-      standard: ami-6755261b
-      min: ami-f657248a
+      standard: ami-4db5ec31
+      min: ami-b4b0e9c8
     ap-southeast-2:
-      standard: ami-1fe21f7d
-      min: ami-f5e11c97
+      standard: ami-6b62ae09
+      min: ami-4462ae26
     ca-central-1:
-      standard: ami-5984013d
-      min: ami-9f8702fb
+      standard: ami-35ae2851
+      min: ami-b2af29d6
     eu-central-1:
-      standard: ami-0471e36b
-      min: ami-4072e02f
+      standard: ami-104419fb
+      min: ami-08471ae3
     eu-west-1:
-      standard: ami-db51c2a2
-      min: ami-8e52c1f7
+      standard: ami-86c695ff
+      min: ami-68c29111
     eu-west-2:
-      standard: ami-22a8b046
-      min: ami-18b6ae7c
+      standard: ami-598b6a3e
+      min: ami-5b8b6a3c
     eu-west-3:
-      standard: ami-680eb915
-      min: ami-9001b6ed
+      standard: ami-f22c9a8f
+      min: ami-af2b9dd2
     sa-east-1:
-      standard: ami-f052109c
-      min: ami-7652101a
+      standard: ami-a77225cb
+      min: ami-1b7b2c77
     us-east-1:
-      standard: ami-74da830e
-      min: ami-ccdd84b6
+      standard: ami-b270a8cf
+      min: ami-3b74ac46
     us-east-2:
-      standard: ami-e782a982
-      min: ami-1c8ca779
+      standard: ami-9bc0f1fe
+      min: ami-b0c6f7d5
     us-west-1:
-      standard: ami-1dacac7d
-      min: ami-96ababf6
+      standard: ami-62405102
+      min: ami-964352f6
     us-west-2:
-      standard: ami-8f08bcf7
-      min: ami-7df74005
+      standard: ami-d2f06baa
+      min: ami-7beb7003
 
 Resources:
 
