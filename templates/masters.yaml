@@ -177,44 +177,44 @@ Resources:
                     INSTANCES=$(echo "$ASG_DATA" | grep -i instance | awk '{print $2}')
                     ETCD_INITIAL_CLUSTER=$(aws ec2 describe-instances --instance-ids $INSTANCES --query 'Reservations[].Instances[].[InstanceId,PrivateIpAddress]' --output text | sort | awk '{ printf("%s=https://%s:2380,", $1, $2) }' | sed 's/,$//g')
 
-                    cat > /etc/systemd/system/etcd.service <<EOF
-                    [Unit]
-                    Description=etcd
-                    After=docker.service
-                    Requires=docker.service
-                    Documentation=https://github.com/coreos
-
-                    [Service]
-                    TimeoutStartSec=0
-                    ExecStartPre=/usr/bin/docker pull $REGISTRY:$ETCD_VERSION
-                    ExecStart=/usr/bin/docker run \\
-                      -p 2379:2379 \\
-                      -p 2380:2380 \\
-                      --net host \\
-                      --volume=$DATA_DIR:/etcd-data \\
-                      --name etcd $REGISTRY:$ETCD_VERSION \\
-                      /usr/local/bin/etcd \\
-                        --data-dir=/etcd-data --name $EC2_INSTANCE_ID \\
-                        --initial-advertise-peer-urls https://$INTERNAL_IP:2380 \\
-                        --listen-peer-urls https://$INTERNAL_IP:2380 \\
-                        --advertise-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
-                        --listen-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
-                        --initial-cluster $ETCD_INITIAL_CLUSTER \\
-                        --initial-cluster-state new --initial-cluster-token $ASG_NAME \\
-                        --auto-tls \\
-                        --peer-auto-tls
-
-                    ExecStop=/usr/bin/docker stop etcd
-                    ExecStopPost=/usr/bin/docker rm -f etcd
-                    ExecReload=/usr/bin/docker restart etcd
-                    Restart=always
-                    RestartSec=10
-                    Type=notify
-                    NotifyAccess=all
-
-                    [Install]
-                    WantedBy=multi-user.target
-                    EOF
+                    # cat > /etc/systemd/system/etcd.service <<EOF
+                    # [Unit]
+                    # Description=etcd
+                    # After=docker.service
+                    # Requires=docker.service
+                    # Documentation=https://github.com/coreos
+                    #
+                    # [Service]
+                    # TimeoutStartSec=0
+                    # ExecStartPre=/usr/bin/docker pull $REGISTRY:$ETCD_VERSION
+                    # ExecStart=/usr/bin/docker run \\
+                    #   -p 2379:2379 \\
+                    #   -p 2380:2380 \\
+                    #   --net host \\
+                    #   --volume=$DATA_DIR:/etcd-data \\
+                    #   --name etcd $REGISTRY:$ETCD_VERSION \\
+                    #   /usr/local/bin/etcd \\
+                    #     --data-dir=/etcd-data --name $EC2_INSTANCE_ID \\
+                    #     --initial-advertise-peer-urls https://$INTERNAL_IP:2380 \\
+                    #     --listen-peer-urls https://$INTERNAL_IP:2380 \\
+                    #     --advertise-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
+                    #     --listen-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
+                    #     --initial-cluster $ETCD_INITIAL_CLUSTER \\
+                    #     --initial-cluster-state new --initial-cluster-token $ASG_NAME \\
+                    #     --auto-tls \\
+                    #     --peer-auto-tls
+                    #
+                    # ExecStop=/usr/bin/docker stop etcd
+                    # ExecStopPost=/usr/bin/docker rm -f etcd
+                    # ExecReload=/usr/bin/docker restart etcd
+                    # Restart=always
+                    # RestartSec=10
+                    # Type=notify
+                    # NotifyAccess=all
+                    #
+                    # [Install]
+                    # WantedBy=multi-user.target
+                    # EOF
 
                     ################## Kubernetes initialication ##############
                     CONFIG_DIR=/etc/kubernetes
@@ -234,6 +234,67 @@ Resources:
                     aws ssm get-parameters --name "/${EnvironmentName}/ca/ca" --query Parameters[0].Value --output text > $CA_DIR/ca.pem
                     aws ssm get-parameters --name "/${EnvironmentName}/ca/master" --query Parameters[0].Value --output text > $CA_DIR/master.pem
                     aws ssm get-parameters --name "/${EnvironmentName}/ca/private/master" --with-decryption --query Parameters[0].Value --output text > $CA_DIR/private/master.pem
+
+                    ##### etcd manifest
+                    cat > $MANIFEST_DIR/etcd.service <<EOF
+                    apiVersion: v1
+                    kind: Pod
+                    metadata:
+                      annotations:
+                        scheduler.alpha.kubernetes.io/critical-pod: ""
+                      labels:
+                        k8s-app: etcd
+                      name: etcd
+                    namespace: kube-system
+                    spec:
+                      containers:
+                        - name: etcd-container
+                          image: $REGISTRY:$ETCD_VERSION
+                          command:
+                             - /usr/local/bin/etcd
+                             - --data-dir=/etcd-data
+                             -  --name=$EC2_INSTANCE_ID
+                             - --initial-advertise-peer-urls=https://$INTERNAL_IP:2380
+                             - --listen-peer-urls=https://$INTERNAL_IP:2380
+                             - --advertise-client-urls=https://$INTERNAL_IP:2379,http://127.0.0.1:2379
+                             - --listen-client-urls=https://$INTERNAL_IP:2379,http://127.0.0.1:2379
+                             - --initial-cluster=$ETCD_INITIAL_CLUSTER
+                             - --initial-cluster-state=new
+                             - --initial-cluster-token=$ASG_NAME
+                             - --auto-tls
+                             - --peer-auto-tls
+                          ports:
+                            - containerPort: 2380
+                              hostPort: 2380
+                              name: serverport
+                            - containerPort: 2379
+                              hostPort: 2379
+                              name: clientport
+                          livenessProbe:
+                            httpGet:
+                              host: 127.0.0.1
+                              path: /health
+                              port: 2379
+                              scheme: HTTP
+                            initialDelaySeconds: 15
+                            timeoutSeconds: 15
+                          volumeMounts:
+                            - mountPath: /etcd-data
+                              name: varetcdata
+                            - mountPath: /var/log/etcd.log
+                              name: varlogetcd
+                      hostNetwork: true
+                      tolerations:
+                      - key: CriticalAddonsOnly
+                        operator: Exists
+                      volumes:
+                      - hostPath:
+                        path: $DATA_DIR
+                        name: varetcdata
+                      - hostPath:
+                        path: /var/log/etcd.log
+                        name: varlogetcd
+                    EOF
 
                     ### Configure Kubelet
                     ## Create config file
@@ -315,8 +376,6 @@ Resources:
                     systemctl start docker
                     systemctl enable kubelet
                     systemctl start kubelet
-                    systemctl enable etcd
-                    systemctl start etcd
 
     AutoScalingGroup:
         Type: AWS::AutoScaling::AutoScalingGroup
