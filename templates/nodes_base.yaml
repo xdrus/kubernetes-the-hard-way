@@ -135,19 +135,23 @@ Resources:
 
     AutoScalingGroup:
         Type: AWS::AutoScaling::AutoScalingGroup
+        CreationPolicy:
+            ResourceSignal:
+                Timeout: PT10M
         Properties:
             VPCZoneIdentifier: !Ref Subnets
             LaunchConfigurationName: !Ref LaunchConfiguration
             MinSize: !Ref ClusterSize
             MaxSize: !Ref MaxSize
             DesiredCapacity: !Ref ClusterSize
-            CreationPolicy:
-                ResourceSignal:
-                    Timeout: PT10M
             Tags:
                 - Key: Name
                   Value: !Sub ${EnvironmentName}-host
                   PropagateAtLaunch: true
                 - Key: Environment
                   Value: !Ref EnvironmentName
+                  PropagateAtLaunch: true
+                  # kubelet specific tag to define cluster name  https://goo.gl/gdXPXu
+                - Key: !Sub kubernetes.io/cluster/${EnvironmentName}
+                  Value: owned
                   PropagateAtLaunch: true

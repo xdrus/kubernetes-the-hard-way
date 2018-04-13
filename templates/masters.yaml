@@ -42,6 +42,10 @@ Parameters:
         Description: SSH keypair name
         Type: AWS::EC2::KeyPair::KeyName
 
+    LoadBalancerUrl:
+      Description: URL of ELB used for master's endpoint
+      Type: String
+
 Mappings:
   RegionToAMI:
     ap-northeast-1:
@@ -113,6 +117,7 @@ Resources:
                     }
 
                     trap "cleanup" INT TERM EXIT
+                    set -ex
 
                     # Update system and install Docker and AWS cli
                     yum update -y
@@ -211,10 +216,105 @@ Resources:
                     WantedBy=multi-user.target
                     EOF
 
+                    ################## Kubernetes initialication ##############
+                    CONFIG_DIR=/etc/kubernetes
+                    MANIFEST_DIR=$CONFIG_DIR/manifests
+                    CA_DIR=$CONFIG_DIR/pki
+                    CNI_CONFIG_DIR=/etc/cni/
+                    CNI_BIN_DIR=/opt/cni/bin
+
+                    mkdir -p $CONFIG_DIR
+                    mkdir -p $MANIFEST_DIR
+                    mkdir -p $CA_DIR
+                    mkdir -p $CA_DIR/private
+                    mkdir -p $CNI_CONFIG_DIR/net.d
+                    mkdir -p $CNI_BIN_DIR
+
+                    ### get certificates
+                    aws ssm get-parameters --name "/${EnvironmentName}/ca/ca" --query Parameters[0].Value --output text > $CA_DIR/ca.pem
+                    aws ssm get-parameters --name "/${EnvironmentName}/ca/master" --query Parameters[0].Value --output text > $CA_DIR/master.pem
+                    aws ssm get-parameters --name "/${EnvironmentName}/ca/private/master" --with-decryption --query Parameters[0].Value --output text > $CA_DIR/private/master.pem
+
+                    ### Configure Kubelet
+                    ## Create config file
+                    cat > $CONFIG_DIR/kubeconfig <<EOF
+                    apiVersion: v1
+                    kind: Config
+                    clusters:
+                    - cluster:
+                        certificate-authority: $CA_DIR/ca.pem
+                        server: ${LoadBalancerUrl}
+                      name: ${EnvironmentName}
+                    contexts:
+                    - context:
+                        cluster: ${EnvironmentName}
+                        user: kubelet
+                      name: kubelet
+                    current-context: kubelet
+                    users:
+                    - name: kubelet
+                      user:
+                        auth-provider:
+                          config:
+                            cluster-id: ${EnvironmentName}
+                          name: aws
+                    EOF
+
+                    ## create systemd service file
+                    cat > /etc/systemd/system/kubelet.service <<EOF
+                    [Unit]
+                    Description=Kubernetes Kubelet Server
+                    Documentation=https://kubernetes.io/docs/concepts/overview/components/#kubelet https://kubernetes.io/docs/reference/generated/kubelet/
+                    After=docker.service
+                    Requires=docker.service
+
+                    [Service]
+                    TimeoutStartSec=5
+                    ExecStartPre=/bin/mkdir -p /var/lib/kubelet
+                    ExecStartPre=/bin/mount --bind /var/lib/kubelet /var/lib/kubelet
+                    ExecStartPre=/bin/mount --make-shared /var/lib/kubelet
+                    ExecStart=/usr/bin/docker run \\
+                        --net=host \\
+                        --pid=host \\
+                        --privileged \\
+                        -v /dev:/dev \\
+                        -v /sys:/sys:ro \\
+                        -v /var/run:/var/run:rw \\
+                        -v /var/lib/docker/:/var/lib/docker:rw \\
+                        -v /var/lib/kubelet/:/var/lib/kubelet:shared \\
+                        -v /var/log:/var/log:shared \\
+                        -v $CONFIG_DIR:/etc/kubernetes:ro \\
+                        k8s.gcr.io/hyperkube:$KUBE_RELEASE kubelet \\
+                            --address=0.0.0.0 \\
+                            --node-ip=$INTERNAL_IP \\
+                            --allow-privileged=true \\
+                            --cloud-provider=aws \\
+                            --cluster-dns=10.100.0.10 \\
+                            --cluster-domain=cluster.local \\
+                            --network-plugin=cni \\
+                            --cni-bin-dir=/opt/cni/bin \\
+                            --cni-conf-dir=/etc/cni/net.d \\
+                            --container-runtime=docker \\
+                            --cgroup-driver=cgroupfs \\
+                            --register-node=true \\
+                            --kubeconfig=$CONFIG_DIR/kubeconfig \\
+                            --anonymous-auth=false \\
+                            --client-ca-file=$CA_DIR/ca.pem \\
+                            --authentication-token-webhook \\
+                            --pod-manifest-path=$MANIFEST_DIR
+                    KillMode=process
+                    Restart=on-failure
+                    RestartSec=5
+
+                    [Install]
+                    WantedBy=multi-user.target
+                    EOF
 
                     systemctl daemon-reload
                     systemctl enable docker
                     systemctl start docker
+                    systemctl enable kubelet
+                    systemctl start kubelet
                     systemctl enable etcd
                     systemctl start etcd
 
