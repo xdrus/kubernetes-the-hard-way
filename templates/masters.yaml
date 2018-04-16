@@ -177,45 +177,6 @@ Resources:
                     INSTANCES=$(echo "$ASG_DATA" | grep -i instance | awk '{print $2}')
                     ETCD_INITIAL_CLUSTER=$(aws ec2 describe-instances --instance-ids $INSTANCES --query 'Reservations[].Instances[].[InstanceId,PrivateIpAddress]' --output text | sort | awk '{ printf("%s=https://%s:2380,", $1, $2) }' | sed 's/,$//g')
 
-                    # cat > /etc/systemd/system/etcd.service <<EOF
-                    # [Unit]
-                    # Description=etcd
-                    # After=docker.service
-                    # Requires=docker.service
-                    # Documentation=https://github.com/coreos
-                    #
-                    # [Service]
-                    # TimeoutStartSec=0
-                    # ExecStartPre=/usr/bin/docker pull $REGISTRY:$ETCD_VERSION
-                    # ExecStart=/usr/bin/docker run \\
-                    #   -p 2379:2379 \\
-                    #   -p 2380:2380 \\
-                    #   --net host \\
-                    #   --volume=$DATA_DIR:/etcd-data \\
-                    #   --name etcd $REGISTRY:$ETCD_VERSION \\
-                    #   /usr/local/bin/etcd \\
-                    #     --data-dir=/etcd-data --name $EC2_INSTANCE_ID \\
-                    #     --initial-advertise-peer-urls https://$INTERNAL_IP:2380 \\
-                    #     --listen-peer-urls https://$INTERNAL_IP:2380 \\
-                    #     --advertise-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
-                    #     --listen-client-urls https://$INTERNAL_IP:2379,http://127.0.0.1:2379 \\
-                    #     --initial-cluster $ETCD_INITIAL_CLUSTER \\
-                    #     --initial-cluster-state new --initial-cluster-token $ASG_NAME \\
-                    #     --auto-tls \\
-                    #     --peer-auto-tls
-                    #
-                    # ExecStop=/usr/bin/docker stop etcd
-                    # ExecStopPost=/usr/bin/docker rm -f etcd
-                    # ExecReload=/usr/bin/docker restart etcd
-                    # Restart=always
-                    # RestartSec=10
-                    # Type=notify
-                    # NotifyAccess=all
-                    #
-                    # [Install]
-                    # WantedBy=multi-user.target
-                    # EOF
-
                     ################## Kubernetes initialication ##############
                     CONFIG_DIR=/etc/kubernetes
                     MANIFEST_DIR=$CONFIG_DIR/manifests
@@ -253,7 +214,7 @@ Resources:
                           command:
                              - /usr/local/bin/etcd
                              - --data-dir=/etcd-data
-                             -  --name=$EC2_INSTANCE_ID
+                             - --name=$EC2_INSTANCE_ID
                              - --initial-advertise-peer-urls=https://$INTERNAL_IP:2380
                              - --listen-peer-urls=https://$INTERNAL_IP:2380
                              - --advertise-client-urls=https://$INTERNAL_IP:2379,http://127.0.0.1:2379
@@ -288,12 +249,88 @@ Resources:
                       - key: CriticalAddonsOnly
                         operator: Exists
                       volumes:
-                      - hostPath:
-                        path: $DATA_DIR
-                        name: varetcdata
-                      - hostPath:
-                        path: /var/log/etcd.log
-                        name: varlogetcd
+                      - name: varetcdata
+                        hostPath:
+                          path: $DATA_DIR
+                      - name: varlogetcd
+                        hostPath:
+                          path: /var/log/etcd.log
+                    EOF
+
+                    ##### kube-proxy manifest
+                    cat > $MANIFEST_DIR/kube-proxy.service <<EOF
+                    apiVersion: v1
+                    kind: Pod
+                    metadata:
+                      name: kube-proxy
+                      namespace: kube-system
+                      annotations:
+                        scheduler.alpha.kubernetes.io/critical-pod: ''
+                      labels:
+                        tier: node
+                        component: kube-proxy
+                        k8s-app: kube-proxy
+                    namespace: kube-system
+                    spec:
+                      hostNetwork: true
+                      tolerations:
+                      - operator: "Exists"
+                        effect: "NoExecute"
+                      - operator: "Exists"
+                        effect: "NoSchedule"
+                      containers:
+                      - name: kube-proxy
+                        image: k8s.gcr.io/hyperkube:$KUBE_RELEASE
+                        resources:
+                          requests:
+                            cpu: 200m
+                        command:
+                          - kube-proxy
+                          - --kubeconfig=$CONFIG_DIR/kubeconfig
+                          - --oom-score-adj=-998
+                          - --proxy-mode=iptables
+                        securityContext:
+                          privileged: true
+                        volumeMounts:
+                        - mountPath: /etc/ssl/certs
+                          name: etc-ssl-certs
+                          readOnly: true
+                        - mountPath: /usr/share/ca-certificates
+                          name: usr-ca-certs
+                          readOnly: true
+                        - mountPath: /var/log
+                          name: varlog
+                          readOnly: false
+                        - mountPath: $CONFIG_DIR
+                          name: kubeconfig
+                          readOnly: false
+                        - mountPath: /run/xtables.lock
+                          name: iptableslock
+                          readOnly: false
+                        - mountPath: /lib/modules
+                          name: lib-modules
+                          readOnly: true
+                      volumes:
+                      - name: usr-ca-certs
+                        hostPath:
+                          path: /usr/share/ca-certificates
+                      - name: etc-ssl-certs
+                        hostPath:
+                          path: /etc/ssl/certs
+                      - name: kubeconfig
+                        hostPath:
+                          path: $CONFIG_DIR
+                          type: FileOrCreate
+                      - name: varlog
+                        hostPath:
+                          path: /var/log
+                      - name: iptableslock
+                        hostPath:
+                          path: /run/xtables.lock
+                          type: FileOrCreate
+                      - name: lib-modules
+                        hostPath:
+                          path: /lib/modules
                     EOF
 
                     ### Configure Kubelet
